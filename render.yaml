@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: qr-generator-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false  # Set manually in Render dashboard
+      - key: BASE_URL
+        sync: false  # Set to your production domain
+      - key: FRONTEND_URL  
+        sync: false  # Set to your frontend domain
