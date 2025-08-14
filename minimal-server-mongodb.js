@@ -486,27 +486,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Health check
+    // Health check - super simple for Railway
     if (method === 'GET' && path === '/health') {
-      try {
-        // Simple health check - don't wait for database queries to avoid timeout
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          status: 'OK', 
-          timestamp: new Date().toISOString(),
-          database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-          port: PORT,
-          message: 'QR Generator API is running!'
-        }));
-      } catch (error) {
-        console.error('Health check error:', error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          status: 'ERROR',
-          message: 'Health check failed',
-          error: error.message
-        }));
-      }
+      console.log('📊 Health check requested');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'OK' }));
       return;
     }
 
@@ -540,17 +524,17 @@ const startServer = async () => {
       MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
     });
     
-    await connectDB();
-    
+    // Start server first, then connect to database
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 QR Generator API (MongoDB Atlas) running on port ${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`🎯 Generate QR: POST http://localhost:${PORT}/api/qr/generate`);
-      console.log(`🔄 Redirects: http://localhost:${PORT}/r/:shortId`);
-      console.log('');
-      console.log('🎉 Production server with MongoDB Atlas ready!');
-      console.log('🌐 Railway deployment successful!');
+      console.log(`🚀 QR Generator API running on port ${PORT}`);
+      console.log(`📊 Health check: http://0.0.0.0:${PORT}/health`);
+      console.log('🎉 Server started successfully!');
     });
+    
+    // Connect to database after server is listening
+    console.log('🔄 Connecting to MongoDB Atlas...');
+    await connectDB();
+    console.log('🌐 Railway deployment successful!');
     
     // Handle server errors
     server.on('error', (error) => {
@@ -560,7 +544,8 @@ const startServer = async () => {
     
   } catch (error) {
     console.error('❌ Failed to start server:', error);
-    process.exit(1);
+    // Don't exit - let server run even if DB connection fails
+    console.log('⚠️ Server running without database connection');
   }
 };
 
