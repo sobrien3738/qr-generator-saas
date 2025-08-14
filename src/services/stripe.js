@@ -1,6 +1,9 @@
 const Stripe = require('stripe');
 const User = require('../models-production/User');
 
+// Ensure dotenv is loaded
+require('dotenv').config();
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // QRGen Pro subscription plans
@@ -17,14 +20,14 @@ const PLANS = {
     price: 9,
     maxQRCodes: 100,
     features: ['Analytics & tracking', 'Custom colors', 'Priority support'],
-    stripePriceId: 'price_pro_monthly' // Will be created in Stripe
+    stripePriceId: 'price_1Rw7etFXRF5SxiRxHvCZJ744' // Created in Stripe
   },
   BUSINESS: {
     name: 'Business',
     price: 49,
     maxQRCodes: 1000, // Essentially unlimited
     features: ['Unlimited QR codes', 'Advanced analytics', 'API access', 'White-label'],
-    stripePriceId: 'price_business_monthly' // Will be created in Stripe
+    stripePriceId: 'price_1Rw7euFXRF5SxiRxfhlQ3q1b' // Created in Stripe
   }
 };
 
