@@ -372,7 +372,10 @@ const server = http.createServer(async (req, res) => {
       const baseUrl = process.env.BASE_URL || 'https://qr-generator-api-production-a8fb.up.railway.app';
       const redirectUrl = `${baseUrl}/r/${shortId}`;
 
-      console.log('Generating QR for:', redirectUrl);
+      console.log('🔗 BASE_URL env var:', process.env.BASE_URL);
+      console.log('🔗 Using baseUrl:', baseUrl);
+      console.log('🔗 Generated redirect URL for QR code:', redirectUrl);
+      console.log('🎯 Target URL after sanitization:', sanitizedUrl);
 
       // Generate QR code as data URL
       const dataURL = await QRCode.toDataURL(redirectUrl, {
