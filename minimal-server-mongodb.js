@@ -489,23 +489,22 @@ const server = http.createServer(async (req, res) => {
     // Health check
     if (method === 'GET' && path === '/health') {
       try {
-        const totalUsers = await User.countDocuments();
-        const totalQRCodes = await QRCodeModel.countDocuments();
-        
+        // Simple health check - don't wait for database queries to avoid timeout
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           status: 'OK', 
           timestamp: new Date().toISOString(),
-          database: 'MongoDB Atlas Connected',
-          totalUsers,
-          totalQRCodes,
-          message: 'QR Generator API (Production with MongoDB) is running!'
+          database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+          port: PORT,
+          message: 'QR Generator API is running!'
         }));
       } catch (error) {
+        console.error('Health check error:', error);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           status: 'ERROR',
-          message: 'Database connection failed'
+          message: 'Health check failed',
+          error: error.message
         }));
       }
       return;
@@ -533,16 +532,36 @@ if (isNaN(port) || port < 0 || port > 65535) {
 const PORT = port;
 
 const startServer = async () => {
-  await connectDB();
-  server.listen(PORT, () => {
-    console.log(`🚀 QR Generator API (MongoDB Atlas) running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
-    console.log(`🎯 Generate QR: POST http://localhost:${PORT}/api/qr/generate`);
-    console.log(`🔄 Redirects: http://localhost:${PORT}/r/:shortId`);
-    console.log('');
-    console.log('🎉 Production server with MongoDB Atlas ready!');
-    console.log('🌐 Railway deployment successful!');
-  });
+  try {
+    console.log('🔄 Starting server...');
+    console.log('📡 Environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT: PORT,
+      MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
+    });
+    
+    await connectDB();
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 QR Generator API (MongoDB Atlas) running on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`🎯 Generate QR: POST http://localhost:${PORT}/api/qr/generate`);
+      console.log(`🔄 Redirects: http://localhost:${PORT}/r/:shortId`);
+      console.log('');
+      console.log('🎉 Production server with MongoDB Atlas ready!');
+      console.log('🌐 Railway deployment successful!');
+    });
+    
+    // Handle server errors
+    server.on('error', (error) => {
+      console.error('❌ Server error:', error);
+      process.exit(1);
+    });
+    
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
 };
 
 startServer().catch(console.error);
