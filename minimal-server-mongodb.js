@@ -534,6 +534,7 @@ const startServer = async () => {
     console.log(`🔄 Redirects: http://localhost:${PORT}/r/:shortId`);
     console.log('');
     console.log('🎉 Production server with MongoDB Atlas ready!');
+    console.log('🌐 Railway deployment successful!');
   });
 };
 
