@@ -63,11 +63,34 @@ const validateUrl = (urlString) => {
 };
 
 const sanitizeUrl = (urlString) => {
-  urlString = urlString.trim();
-  if (!/^https?:\/\//i.test(urlString)) {
-    urlString = 'https://' + urlString;
+  if (!urlString || typeof urlString !== 'string') {
+    throw new Error('Invalid URL provided');
   }
-  return urlString;
+  
+  urlString = urlString.trim();
+  
+  // If it already has a protocol, return as-is
+  if (/^https?:\/\//i.test(urlString)) {
+    return urlString;
+  }
+  
+  // If it starts with www. or looks like a domain, add https://
+  if (/^(www\.)?[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(urlString)) {
+    return 'https://' + urlString;
+  }
+  
+  // If it looks like a domain without www, add https://
+  if (/^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(urlString)) {
+    return 'https://' + urlString;
+  }
+  
+  // If it contains a slash (path), assume it's a domain with path
+  if (urlString.includes('/')) {
+    return 'https://' + urlString;
+  }
+  
+  // Last resort: assume it's a domain and add https://
+  return 'https://' + urlString;
 };
 
 const hashPassword = (password) => {
@@ -346,7 +369,7 @@ const server = http.createServer(async (req, res) => {
 
       // Generate unique short ID
       const shortId = generateShortId();
-      const baseUrl = process.env.BASE_URL || 'http://localhost:5001';
+      const baseUrl = process.env.BASE_URL || 'https://qr-generator-api-production-a8fb.up.railway.app';
       const redirectUrl = `${baseUrl}/r/${shortId}`;
 
       console.log('Generating QR for:', redirectUrl);
@@ -423,7 +446,7 @@ const server = http.createServer(async (req, res) => {
       // Format for dashboard
       const formattedQRCodes = qrCodes.map(qr => ({
         id: qr._id,
-        shortUrl: `${process.env.BASE_URL || 'http://localhost:5001'}/r/${qr.shortId}`,
+        shortUrl: `${process.env.BASE_URL || 'https://qr-generator-api-production-a8fb.up.railway.app'}/r/${qr.shortId}`,
         shortId: qr.shortId,
         originalUrl: qr.url,
         title: qr.title,
