@@ -523,7 +523,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5001;
+// Parse and validate PORT
+let port = parseInt(process.env.PORT);
+if (isNaN(port) || port < 0 || port > 65535) {
+  console.error('❌ Invalid PORT value:', process.env.PORT);
+  console.log('🔧 Using default port 5001');
+  port = 5001;
+}
+const PORT = port;
 
 const startServer = async () => {
   await connectDB();
