@@ -106,7 +106,14 @@ const getUserFromToken = async (authHeader) => {
 
 // CORS headers
 const setCORSHeaders = (res) => {
-  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://qr-generator-frontend.vercel.app',
+    'https://qr-generator-frontend-git-main.vercel.app',
+    process.env.FRONTEND_URL
+  ].filter(Boolean);
+  
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow all origins for now
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
