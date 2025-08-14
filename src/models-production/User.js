@@ -26,7 +26,7 @@ const UserSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'pro', 'enterprise'],
+    enum: ['free', 'pro', 'business'],
     default: 'free'
   },
   subscription: {
@@ -36,7 +36,12 @@ const UserSchema = new mongoose.Schema({
     },
     currentPeriodEnd: Date,
     customerId: String,
-    subscriptionId: String
+    subscriptionId: String,
+    status: {
+      type: String,
+      enum: ['active', 'canceled', 'incomplete', 'incomplete_expired', 'past_due', 'trialing', 'unpaid'],
+      default: null
+    }
   },
   usage: {
     qrCodesCreated: {
@@ -101,7 +106,7 @@ UserSchema.pre('save', function(next) {
     switch (this.plan) {
       case 'free':
         this.limits = {
-          maxQRCodes: 5,
+          maxQRCodes: 10,
           maxScansPerMonth: 100,
           canCustomize: false,
           canTrackAnalytics: false,
@@ -117,9 +122,9 @@ UserSchema.pre('save', function(next) {
           canExportData: true
         };
         break;
-      case 'enterprise':
+      case 'business':
         this.limits = {
-          maxQRCodes: -1, // Unlimited
+          maxQRCodes: 1000, // Essentially unlimited
           maxScansPerMonth: -1, // Unlimited
           canCustomize: true,
           canTrackAnalytics: true,

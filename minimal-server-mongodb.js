@@ -3,6 +3,12 @@ const url = require('url');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
+const { 
+  createCheckoutSession, 
+  createPortalSession, 
+  handleSubscriptionChange,
+  PLANS 
+} = require('./src/services/stripe');
 
 require('dotenv').config();
 
@@ -605,6 +611,141 @@ const server = http.createServer(async (req, res) => {
       // Redirect to original URL
       res.writeHead(302, { 'Location': qrCode.url });
       res.end();
+      return;
+    }
+
+    // Get subscription plans
+    if (method === 'GET' && path === '/api/billing/plans') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        plans: Object.values(PLANS),
+        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY
+      }));
+      return;
+    }
+
+    // Create checkout session
+    if (method === 'POST' && path === '/api/billing/create-checkout-session') {
+      const user = await getUserFromToken(req.headers.authorization);
+      
+      if (!user) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Authentication required' }));
+        return;
+      }
+
+      const body = await parseJSON(req);
+      const { planType } = body;
+
+      if (!planType || !['pro', 'business'].includes(planType)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid plan type' }));
+        return;
+      }
+
+      try {
+        const baseUrl = process.env.BASE_URL || 'https://qr-generator-api-production-a8fb.up.railway.app';
+        const frontendUrl = process.env.FRONTEND_URL || 'https://qr-generator-frontend-gules.vercel.app';
+        
+        const priceId = planType === 'pro' ? PLANS.PRO.stripePriceId : PLANS.BUSINESS.stripePriceId;
+        const successUrl = `${frontendUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = `${frontendUrl}/pricing?canceled=true`;
+
+        const session = await createCheckoutSession(
+          user._id,
+          priceId,
+          successUrl,
+          cancelUrl
+        );
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          sessionId: session.id,
+          url: session.url
+        }));
+      } catch (error) {
+        console.error('❌ Checkout session error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to create checkout session' }));
+      }
+      return;
+    }
+
+    // Create customer portal session
+    if (method === 'POST' && path === '/api/billing/create-portal-session') {
+      const user = await getUserFromToken(req.headers.authorization);
+      
+      if (!user) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Authentication required' }));
+        return;
+      }
+
+      if (!user.subscription.customerId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No active subscription found' }));
+        return;
+      }
+
+      try {
+        const frontendUrl = process.env.FRONTEND_URL || 'https://qr-generator-frontend-gules.vercel.app';
+        const returnUrl = `${frontendUrl}/dashboard`;
+
+        const session = await createPortalSession(
+          user.subscription.customerId,
+          returnUrl
+        );
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ url: session.url }));
+      } catch (error) {
+        console.error('❌ Portal session error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to create portal session' }));
+      }
+      return;
+    }
+
+    // Stripe webhooks
+    if (method === 'POST' && path === '/api/billing/webhook') {
+      let event;
+
+      try {
+        const sig = req.headers['stripe-signature'];
+        const body = await parseJSON(req);
+        
+        // In production, verify the webhook signature
+        if (process.env.STRIPE_WEBHOOK_SECRET) {
+          event = require('stripe').webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+        } else {
+          event = body; // For testing
+        }
+      } catch (err) {
+        console.error('❌ Webhook signature verification failed:', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Webhook signature verification failed' }));
+        return;
+      }
+
+      // Handle the event
+      try {
+        switch (event.type) {
+          case 'customer.subscription.created':
+          case 'customer.subscription.updated':
+          case 'customer.subscription.deleted':
+            await handleSubscriptionChange(event.data.object);
+            break;
+          default:
+            console.log(`Unhandled event type ${event.type}`);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ received: true }));
+      } catch (error) {
+        console.error('❌ Webhook handler error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Webhook handler failed' }));
+      }
       return;
     }
 
