@@ -1,14 +1,20 @@
 const http = require('http');
 const url = require('url');
 const QRCode = require('qrcode');
-const { customAlphabet } = require('nanoid');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 require('dotenv').config();
 
-const generateShortId = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 8);
-const generateUserId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12);
+// Dynamic import for nanoid (ES module)
+let generateShortId;
+let generateUserId;
+
+const initNanoid = async () => {
+  const { customAlphabet } = await import('nanoid');
+  generateShortId = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 8);
+  generateUserId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12);
+};
 
 // Import models
 const User = require('./src/models-production/User');
@@ -523,6 +529,11 @@ const startServer = async () => {
       PORT: PORT,
       MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
     });
+    
+    // Initialize nanoid
+    console.log('🔄 Initializing nanoid...');
+    await initNanoid();
+    console.log('✅ Nanoid initialized');
     
     // Start server first, then connect to database
     server.listen(PORT, '0.0.0.0', () => {
