@@ -418,7 +418,7 @@ const server = http.createServer(async (req, res) => {
       const qrCodes = await QRCodeModel
         .find({ userId: user._id })
         .sort({ createdAt: -1 })
-        .select('-qrCodeData -analytics.scanHistory'); // Exclude large fields
+        .select('-analytics.scanHistory'); // Exclude scan history but keep qrCodeData
 
       // Format for dashboard
       const formattedQRCodes = qrCodes.map(qr => ({
@@ -429,8 +429,11 @@ const server = http.createServer(async (req, res) => {
         title: qr.title,
         description: qr.description,
         createdAt: qr.createdAt,
-        totalScans: qr.analytics.totalScans,
-        lastScanned: qr.analytics.lastScanned,
+        qrCodeData: qr.qrCodeData, // Include QR code image data
+        analytics: {
+          totalScans: qr.analytics.totalScans,
+          lastScanned: qr.analytics.lastScanned
+        },
         isActive: qr.isActive
       }));
 
@@ -447,6 +450,86 @@ const server = http.createServer(async (req, res) => {
         }
       }));
       return;
+    }
+
+    // Update QR Code
+    if (method === 'PUT' && path.startsWith('/api/qr/')) {
+      const pathParts = path.split('/');
+      if (pathParts.length === 4) {
+        const qrId = pathParts[3];
+        const user = await getUserFromToken(req.headers.authorization);
+        
+        if (!user) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Authentication required' }));
+          return;
+        }
+
+        const body = await parseJSON(req);
+        const { title, description, isActive } = body;
+
+        const qrCode = await QRCodeModel.findOne({ _id: qrId, userId: user._id });
+        if (!qrCode) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'QR code not found' }));
+          return;
+        }
+
+        // Update fields
+        if (title !== undefined) qrCode.title = title;
+        if (description !== undefined) qrCode.description = description;
+        if (isActive !== undefined) qrCode.isActive = isActive;
+
+        await qrCode.save();
+
+        console.log(`✅ QR code updated in MongoDB: ${qrId}`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          id: qrCode._id,
+          title: qrCode.title,
+          description: qrCode.description,
+          isActive: qrCode.isActive,
+          message: 'QR code updated successfully'
+        }));
+        return;
+      }
+    }
+
+    // Delete QR Code
+    if (method === 'DELETE' && path.startsWith('/api/qr/')) {
+      const pathParts = path.split('/');
+      if (pathParts.length === 4) {
+        const qrId = pathParts[3];
+        const user = await getUserFromToken(req.headers.authorization);
+        
+        if (!user) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Authentication required' }));
+          return;
+        }
+
+        const qrCode = await QRCodeModel.findOne({ _id: qrId, userId: user._id });
+        if (!qrCode) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'QR code not found' }));
+          return;
+        }
+
+        await QRCodeModel.findByIdAndDelete(qrId);
+
+        // Update user's QR code count
+        if (user.usage.qrCodesCreated > 0) {
+          user.usage.qrCodesCreated -= 1;
+          await user.save();
+        }
+
+        console.log(`✅ QR code deleted from MongoDB: ${qrId}`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ message: 'QR code deleted successfully' }));
+        return;
+      }
     }
 
     // QR Code redirect (handles scans)
