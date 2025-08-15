@@ -614,6 +614,194 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Get overall analytics for user dashboard
+    if (method === 'GET' && path === '/api/analytics/overview') {
+      const user = await getUserFromToken(req.headers.authorization);
+      
+      if (!user) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Authentication required' }));
+        return;
+      }
+
+      try {
+        // Get basic stats
+        const qrCodes = await QRCodeModel.find({ userId: user._id });
+        const totalQRCodes = qrCodes.length;
+        const activeQRCodes = qrCodes.filter(qr => qr.isActive).length;
+        const totalScans = qrCodes.reduce((sum, qr) => sum + qr.analytics.totalScans, 0);
+
+        // Calculate this month's scans
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        let scansThisMonth = 0;
+        qrCodes.forEach(qr => {
+          if (qr.analytics.scanHistory) {
+            scansThisMonth += qr.analytics.scanHistory.filter(scan => 
+              new Date(scan.timestamp) >= startOfMonth
+            ).length;
+          }
+        });
+
+        // Get top performing QR codes
+        const topPerforming = qrCodes
+          .sort((a, b) => b.analytics.totalScans - a.analytics.totalScans)
+          .slice(0, 5)
+          .map(qr => ({
+            id: qr._id,
+            title: qr.title,
+            shortId: qr.shortId,
+            totalScans: qr.analytics.totalScans,
+            lastScanned: qr.analytics.lastScanned,
+            createdAt: qr.createdAt
+          }));
+
+        // Generate daily scans for the last 30 days
+        const dailyScans = [];
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          date.setHours(0, 0, 0, 0);
+          
+          const nextDay = new Date(date);
+          nextDay.setDate(nextDay.getDate() + 1);
+          
+          let dayScans = 0;
+          qrCodes.forEach(qr => {
+            if (qr.analytics.scanHistory) {
+              dayScans += qr.analytics.scanHistory.filter(scan => {
+                const scanDate = new Date(scan.timestamp);
+                return scanDate >= date && scanDate < nextDay;
+              }).length;
+            }
+          });
+          
+          dailyScans.push({
+            date: date.toISOString().split('T')[0],
+            scans: dayScans
+          });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          overview: {
+            totalQRCodes,
+            activeQRCodes,
+            totalScans,
+            scansThisMonth
+          },
+          topPerforming,
+          chartData: {
+            dailyScans
+          }
+        }));
+      } catch (error) {
+        console.error('Analytics overview error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to fetch analytics' }));
+      }
+      return;
+    }
+
+    // Get detailed analytics for a specific QR code
+    if (method === 'GET' && path.startsWith('/api/analytics/qr/')) {
+      const pathParts = path.split('/');
+      if (pathParts.length === 5) {
+        const qrId = pathParts[4];
+        const user = await getUserFromToken(req.headers.authorization);
+        
+        if (!user) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Authentication required' }));
+          return;
+        }
+
+        try {
+          const qrCode = await QRCodeModel.findOne({ _id: qrId, userId: user._id });
+          if (!qrCode) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'QR code not found' }));
+            return;
+          }
+
+          // Calculate daily scans for the last 30 days
+          const dailyScans = [];
+          for (let i = 29; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            date.setHours(0, 0, 0, 0);
+            
+            const nextDay = new Date(date);
+            nextDay.setDate(nextDay.getDate() + 1);
+            
+            const dayScans = qrCode.analytics.scanHistory ? qrCode.analytics.scanHistory.filter(scan => {
+              const scanDate = new Date(scan.timestamp);
+              return scanDate >= date && scanDate < nextDay;
+            }).length : 0;
+            
+            dailyScans.push({
+              date: date.toISOString().split('T')[0],
+              scans: dayScans
+            });
+          }
+
+          // Analyze device types from user agents
+          const deviceStats = {};
+          if (qrCode.analytics.scanHistory) {
+            qrCode.analytics.scanHistory.forEach(scan => {
+              if (scan.userAgent) {
+                let device = 'Unknown';
+                const ua = scan.userAgent.toLowerCase();
+                if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
+                  device = 'Mobile';
+                } else if (ua.includes('tablet') || ua.includes('ipad')) {
+                  device = 'Tablet';
+                } else if (ua.includes('desktop') || ua.includes('windows') || ua.includes('mac')) {
+                  device = 'Desktop';
+                }
+                deviceStats[device] = (deviceStats[device] || 0) + 1;
+              }
+            });
+          }
+
+          const deviceArray = Object.entries(deviceStats).map(([device, count]) => ({
+            device,
+            count,
+            percentage: Math.round((count / qrCode.analytics.totalScans) * 100) || 0
+          }));
+
+          // Get recent scans (last 10)
+          const recentScans = qrCode.analytics.scanHistory 
+            ? qrCode.analytics.scanHistory
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .slice(0, 10)
+                .map(scan => ({
+                  timestamp: scan.timestamp,
+                  userAgent: scan.userAgent,
+                  location: scan.location
+                }))
+            : [];
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            totalScans: qrCode.analytics.totalScans,
+            lastScanned: qrCode.analytics.lastScanned,
+            createdAt: qrCode.createdAt,
+            dailyScans,
+            deviceStats: deviceArray,
+            recentScans
+          }));
+        } catch (error) {
+          console.error('QR analytics error:', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to fetch QR analytics' }));
+        }
+      }
+      return;
+    }
+
     // Get subscription plans
     if (method === 'GET' && path === '/api/billing/plans') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
