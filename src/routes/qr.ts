@@ -1,6 +1,6 @@
 import express from 'express';
 import QRCodeModel from '../models/QRCode';
-import { generateQRCode, generateQRCodeSVG, validateUrl, sanitizeUrl } from '../utils/qrGenerator';
+import { generateQRCode, generateQRCodeSVG, generateQRCodePDF, validateUrl, sanitizeUrl } from '../utils/qrGenerator';
 import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
@@ -246,6 +246,66 @@ router.get('/redirect/:shortId', async (req, res) => {
   } catch (error) {
     console.error('QR redirect error:', error);
     res.status(500).json({ error: 'Redirect failed' });
+  }
+});
+
+// Download QR code in specific format
+router.get('/download/:id/:format', async (req, res) => {
+  try {
+    const { id, format } = req.params;
+    const validFormats = ['png', 'svg', 'pdf'];
+    
+    if (!validFormats.includes(format.toLowerCase())) {
+      return res.status(400).json({ error: 'Invalid format. Supported formats: png, svg, pdf' });
+    }
+
+    // Find the QR code
+    const qrCode = await QRCodeModel.findById(id);
+    
+    if (!qrCode) {
+      return res.status(404).json({ error: 'QR code not found' });
+    }
+
+    const formatLower = format.toLowerCase();
+    const baseFilename = `qr-${qrCode.shortId || qrCode.id}`;
+
+    switch (formatLower) {
+      case 'png':
+        // Return existing PNG data
+        const base64Data = qrCode.qrCodeData.replace(/^data:image\/png;base64,/, '');
+        const pngBuffer = Buffer.from(base64Data, 'base64');
+        
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename="${baseFilename}.png"`);
+        res.send(pngBuffer);
+        break;
+
+      case 'svg':
+        // Generate SVG format
+        const svg = await generateQRCodeSVG(qrCode.url, qrCode.customization);
+        
+        res.setHeader('Content-Type', 'image/svg+xml');
+        res.setHeader('Content-Disposition', `attachment; filename="${baseFilename}.svg"`);
+        res.send(svg);
+        break;
+
+      case 'pdf':
+        // Generate PDF format
+        const pdfBuffer = await generateQRCodePDF(qrCode.url, qrCode.customization, {
+          title: qrCode.title,
+          description: qrCode.description,
+          url: qrCode.url
+        });
+        
+        res.setHeader('Content-Type', 'image/png'); // Canvas generates PNG for now
+        res.setHeader('Content-Disposition', `attachment; filename="${baseFilename}.png"`);
+        res.send(pdfBuffer);
+        break;
+    }
+
+  } catch (error) {
+    console.error('QR download error:', error);
+    res.status(500).json({ error: 'Failed to generate download' });
   }
 });
 

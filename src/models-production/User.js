@@ -106,7 +106,7 @@ UserSchema.pre('save', function(next) {
     switch (this.plan) {
       case 'free':
         this.limits = {
-          maxQRCodes: 10,
+          maxQRCodes: 5,
           maxScansPerMonth: 100,
           canCustomize: false,
           canTrackAnalytics: false,

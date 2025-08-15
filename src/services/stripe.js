@@ -11,7 +11,7 @@ const PLANS = {
   FREE: {
     name: 'Free',
     price: 0,
-    maxQRCodes: 10,
+    maxQRCodes: 5,
     features: ['Basic QR generation', 'Limited customization'],
     stripePriceId: null // Free plan doesn't need Stripe
   },
@@ -152,7 +152,7 @@ const handleSubscriptionChange = async (subscription) => {
 
     let newPlan = 'free';
     let newLimits = {
-      maxQRCodes: 10,
+      maxQRCodes: 5,
       canCustomize: false,
       canTrackAnalytics: false
     };
